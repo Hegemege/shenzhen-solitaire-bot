@@ -11,12 +11,16 @@ SUIT_STACK_COUNT = 3
 
 
 class GameState:
-    stacks = []  # list of lists of tuples
-    open_slots = []  # list of tuples
-    # list of lists (2-tuples really) indicating current value per suit
-    suit_stacks = []
-
     def __init__(self):
+        # List of lists of tuples
+        self.stacks = []
+
+        # List of tuples
+        self.open_slots = []
+
+        # List of lists (2-tuples really) indicating current value per suit
+        self.suit_stacks = []
+
         # Initialize all stacks as empty
         for i in range(STACK_COUNT):
             self.stacks.append([])
@@ -155,9 +159,9 @@ class GameState:
         """
         self.stacks[index].append(card)
 
-    def initialize_state(self):
+    def validate_state(self):
         """
-            Tells the state that the parsing has concluded. The state needs to check how many cards it is missing in 
+            Tells the state that the parsing has concluded. The state needs to check how many cards it is missing in
             each color and update the suit_stacks counts accordingly.
         """
         suit_check = [[0, 0, 0] + [x for x in range(10)] for i in range(3)]
@@ -171,6 +175,31 @@ class GameState:
                 if suit_index is None:
                     continue
 
+                try:
+                    suit_check[suit_index].remove(card[1])
+                except:
+                    print("Parsing image into game state failed. Duplicate card found: " + str(card))
+                    exit(1)
+
+        # If there are cards remaining, they were already autoresolved. Figure out which cards and suits, and increment the suit stacks accordingly
+        # No need to care about the rose card
+        for suit_index in range(len(suit_check)):
+            for card_value in suit_check[suit_index]:
+                # Check for errors
+                if card_value == 0:
+                    print("Parsing image into game state failed. Not all suit token cards were found. Suit: " +
+                          self.suit_name(suit_index))
+                    exit(1)
+
+                # If the card in the given suit is not an expected value, some cards were not detected correctly
+                expected_value = self.suit_stacks[suit_index][1] + 1
+                if card_value != expected_value:
+                    print("Parsing image into game state failed. Unexpected card not found: " + str(card))
+                    exit(1)
+
+                # Increment the suit stack for the given suit
+                self.suit_stacks[suit_index][1] += 1
+
     def suit_index(self, card):
         """
             Get the index of the given suit. Returns None for the rose card
@@ -182,6 +211,18 @@ class GameState:
         elif card[0] == "black":
             return 2
         return None
+
+    def suit_name(self, index):
+        """
+            Convert a suit index to the suit name
+        """
+        if index == 0:
+            return "red"
+        elif index == 1:
+            return "green"
+        elif index == 2:
+            return "black"
+        return "rose"
 
     def __eq__(self, other):
         for i in range(STACK_COUNT):
@@ -196,7 +237,7 @@ class GameState:
 
     def __hash__(self):
         open_slots_hash = "".join(["".join(x) for x in self.open_slots])
-        stacks_hash = "".join(["".join("".join(x)) for x in self.stacks])
+        stacks_hash = "".join(["".join([str(y) for y in x]) for x in self.stacks])
         return hash(open_slots_hash + "-" + stacks_hash)
 
     def __str__(self):

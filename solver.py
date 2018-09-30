@@ -103,15 +103,16 @@ def solve():
     # image = crop(image)
     image = PIL.Image.open("reference_img.bmp")
 
-    # Initialize beginning game statepip
+    # Initialize the beginning game state
     state = GameState()
 
     # Parse the image and populate the state
     populate_state(image, state)
 
-    state.auto_resolve()
+    # Validate the game state, in case of auto-resolved cards at the beginning of the game
+    state.validate_state()
 
-    print(state)
+    print(hash(state))
 
 
 def crop(image):
