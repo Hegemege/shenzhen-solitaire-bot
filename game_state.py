@@ -112,8 +112,7 @@ class GameState:
 
             # Also go through all open slot cards. Rose cannot be found here
             for i in range(len(self.open_slots)):
-                # Reverse order
-                card = self.open_slots[len(self.open_slots) - 1 - i]
+                card = self.open_slots[i]
                 current_suit_value = self.suit_stacks[self.suit_index(card)][1]
 
                 if card[1] == current_suit_value + 1 and (card[1] == minimum_suit_value + 1 or card[1] == 1 or card[1] == 2):
@@ -132,7 +131,7 @@ class GameState:
         stack = self.stacks[index]
         if len(stack) == 0:
             return None
-        return stack[len(stack) - 1]
+        return stack[-1]
 
     def get_total_card_count(self):
         """
@@ -146,7 +145,7 @@ class GameState:
             Removes the said cards from the stack
         """
         stack = self.stacks[index]
-        start = stack[:len(stack) - count]
+        start = stack[:-count]
         end = stack[-count:]
 
         # Set the "new" stack and return the extra
@@ -202,7 +201,7 @@ class GameState:
 
     def get_legal_actions(self):
         """
-            Returns all legal actions as a 2-tuple:
+            Returns all legal actions as a 2-tuple of 2-tuples:
                 (from, to)
 
             "from" is a 2-tuple
@@ -211,29 +210,84 @@ class GameState:
 
             "to" is a 2-tuple
                 (destination, index)
-            with destination being "suit", "open" or "stack", with a number indicating the target stack index
+            with destination being "suit", "open", "stack" or "token", with a number indicating the target stack index
+            "token" means the player wants to bundle up all 4 available token cards into a discard pile into an empty open slot
+
+            Any single stack card can be placed into open cards if there is space.
+            Any single stack card that is not a suit token can be placed onto the suit stack if the value is (suit value + 1)
         """
+        actions = []
+
         # Loop through all stacks and open cards, and list out all valid actions
-        pass
+        for stack_index in range(STACK_COUNT):
+            stack = self.stacks[stack_index]
+            for card_index in range(len(stack)):
+                card = stack[card_index]
+                can_move, stack_depth = self.can_move(stack_index, card_index)
+                if not can_move:
+                    continue
+
+                # Check if the card can be placed upon any other stack
+                for target_stack_index in range(STACK_COUNT):
+                    # Can not move onto the same stack
+                    if stack_index == target_stack_index:
+                        continue
+
+                    if self.can_place(card, target_stack_index):
+                        actions.append((
+                            (stack_index, card_index), ("stack", target_stack_index)
+                        ))
+
+                # Check if the card can be placed into the open slots. The card must be moved alone
+                if len(self.open_slots) < OPEN_SLOT_COUNT and stack_depth == 1:
+                    actions.append((
+                        (stack_index, card_index), ("open", None)
+                    ))
+
+        return actions
 
     def can_move(self, stack_index, card_index):
         """
-            Returns true if the card can be moved from the current stack
+            Returns a 2-tuple with first value True if the card can be moved from the current stack
+            The second value is the depth of the stack underneath the card
         """
         card = self.stacks[stack_index][card_index]
         current_card = card
+        stack_depth = 1
         next_card_index = card_index + 1
         while next_card_index < len(self.stacks[stack_index]):
             next_card = self.stacks[stack_index][next_card_index]
 
             if next_card[1] == 0 or current_card[1] == 0:
-                return False
+                return (False, 0)
 
             if (next_card[0] == current_card[0] or next_card[1] != current_card[1] - 1):
-                return False
+                return (False, 0)
 
             current_card = next_card
             next_card_index += 1
+            stack_depth += 1
+
+        return (True, stack_depth)
+
+    def can_place(self, card, stack_index):
+        """
+            Returns true if the given card can be placed onto the given stack
+        """
+        # Can always place on empty stack
+        if len(self.stacks[stack_index]) == 0:
+            return True
+
+        target_card = self.stacks[stack_index][-1]
+
+        # Cannot place onto suit token
+        # Cannot place suit token onto anything other than empty stack
+        if target_card[1] == 0 or card[1] == 0:
+            return False
+
+        # Target card must be different suit and +1 in value
+        if target_card[0] == card[0] or target_card[1] != card[1] + 1:
+            return False
 
         return True
 
