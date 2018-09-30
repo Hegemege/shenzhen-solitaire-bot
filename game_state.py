@@ -200,6 +200,43 @@ class GameState:
                 # Increment the suit stack for the given suit
                 self.suit_stacks[suit_index][1] += 1
 
+    def get_legal_actions(self):
+        """
+            Returns all legal actions as a 2-tuple:
+                (from, to)
+
+            "from" is a 2-tuple
+                (stack_index, card_index)
+            with stack_index = -1 meaning the open slots, and card_index meaning the index of the card in the given stack
+
+            "to" is a 2-tuple
+                (destination, index)
+            with destination being "suit", "open" or "stack", with a number indicating the target stack index
+        """
+        # Loop through all stacks and open cards, and list out all valid actions
+        pass
+
+    def can_move(self, stack_index, card_index):
+        """
+            Returns true if the card can be moved from the current stack
+        """
+        card = self.stacks[stack_index][card_index]
+        current_card = card
+        next_card_index = card_index + 1
+        while next_card_index < len(self.stacks[stack_index]):
+            next_card = self.stacks[stack_index][next_card_index]
+
+            if next_card[1] == 0 or current_card[1] == 0:
+                return False
+
+            if (next_card[0] == current_card[0] or next_card[1] != current_card[1] - 1):
+                return False
+
+            current_card = next_card
+            next_card_index += 1
+
+        return True
+
     def suit_index(self, card):
         """
             Get the index of the given suit. Returns None for the rose card

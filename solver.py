@@ -99,9 +99,9 @@ def solve():
     """
         Solves the current game configuration
     """
-    # image = ImageGrab.grab()
-    # image = crop(image)
-    image = PIL.Image.open("reference_img.bmp")
+    #image = ImageGrab.grab()
+    #image = crop(image)
+    image = PIL.Image.open("reference_img2.bmp")
 
     # Initialize the beginning game state
     state = GameState()
@@ -112,7 +112,14 @@ def solve():
     # Validate the game state, in case of auto-resolved cards at the beginning of the game
     state.validate_state()
 
-    print(hash(state))
+    # Setup lookups and other structures for the main solving loop
+    state_history = set()
+    search_stack = []
+
+    # Start the main solving loop
+    while True:
+        pass
+        break
 
 
 def crop(image):
