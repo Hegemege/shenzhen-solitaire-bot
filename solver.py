@@ -101,7 +101,7 @@ def solve():
     """
     #image = ImageGrab.grab()
     #image = crop(image)
-    image = PIL.Image.open("reference_img2.bmp")
+    image = PIL.Image.open("reference_img.bmp")
 
     # Initialize the beginning game state
     state = GameState()
@@ -115,6 +115,10 @@ def solve():
     # Setup lookups and other structures for the main solving loop
     state_history = set()
     search_stack = []
+
+    actions = state.get_legal_actions()
+    for action in actions:
+        print(action)
 
     # Start the main solving loop
     while True:

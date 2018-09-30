@@ -212,13 +212,14 @@ class GameState:
                 (destination, index)
             with destination being "suit", "open", "stack" or "token", with a number indicating the target stack index
             "token" means the player wants to bundle up all 4 available token cards into a discard pile into an empty open slot
+                In this case the index is the suit index
 
             Any single stack card can be placed into open cards if there is space.
             Any single stack card that is not a suit token can be placed onto the suit stack if the value is (suit value + 1)
         """
         actions = []
 
-        # Loop through all stacks and open cards, and list out all valid actions
+        # Loop through all stacks, and list out all legal actions
         for stack_index in range(STACK_COUNT):
             stack = self.stacks[stack_index]
             for card_index in range(len(stack)):
@@ -243,6 +244,58 @@ class GameState:
                     actions.append((
                         (stack_index, card_index), ("open", None)
                     ))
+
+                # Check if the card can be moved into suit stack. The card must be moved alone
+                suit_index = self.suit_index(card)
+                if card[1] == self.suit_stacks[suit_index][1] + 1 and stack_depth == 1:
+                    actions.append((
+                        (stack_index, card_index), ("suit", None)
+                    ))
+
+        # Loop through all open slots, add legal actions
+        for card_index in range(len(self.open_slots)):
+            card = self.open_slots[card_index]
+
+            # Check if the card can be placed upon any other stack
+            for target_stack_index in range(STACK_COUNT):
+                if self.can_place(card, target_stack_index):
+                    actions.append((
+                        (-1, card_index), ("stack", target_stack_index)
+                    ))
+
+            # There is no point moving a card from one open slot to another
+
+            # Check if the card can be moved into suit stack
+            suit_index = self.suit_index(card)
+            if (card[1] == self.suit_stacks[suit_index][1] + 1):
+                actions.append((
+                    (-1, card_index), ("suit", None)
+                ))
+
+        # Check if 4 of the same token card are visible for the discarding action
+        # Also check if a given suit card is already in the open slots
+        suit_token_count = {"red": 0, "green": 0, "black": 0}
+        suit_token_in_open_slot = {"red": False, "green": False, "black": False}
+
+        # Search from stacks...
+        for stack_index in range(STACK_COUNT):
+            card = self.query_stack_top(stack_index)
+            if card[1] == 0:
+                suit_token_count[card[0]] += 1
+
+        # ... and open slots
+        for card_index in range(len(self.open_slots)):
+            card = self.open_slots[card_index]
+            if card[1] == 0:
+                suit_token_count[card[0]] += 1
+                suit_token_in_open_slot[card[0]] = True
+
+        for suit in suit_token_count:
+            count = suit_token_count[suit]
+            if count == 4 and (suit_token_in_open_slot[suit] == True or len(self.open_slots) < OPEN_SLOT_COUNT):
+                actions.append((
+                    (None, None), ("token", self.suit_index(suit))
+                ))
 
         return actions
 
