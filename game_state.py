@@ -152,6 +152,20 @@ class GameState:
         self.stacks[index] = start
         return end
 
+    def pull_from_open_slot(self, index):
+        """
+            Removes the card at the given index from the open slot
+        """
+        card = self.open_slots[index]
+
+        slots = self.open_slots
+        start = slots[:index]
+        end = slots[index + 1:]
+
+        self.open_slots = start + end
+
+        return card
+
     def parse_card_into_stack(self, index, card):
         """
             Puts the given card at the top of the stack, used in the image parsing
@@ -298,6 +312,60 @@ class GameState:
                 ))
 
         return actions
+
+    def apply_action(self, action):
+        """
+            Applies the given action to this state. Assumes that the action is valid.
+        """
+        action_from = action[0]
+        action_to = action[1]
+
+        # Moving a card or stack onto another stack
+        if action_to[0] == "stack":
+            from_stack_index = action_from[0]
+            from_card_index = action_from[1]
+
+            to_stack_index = action_to[1]
+
+            cards_to_pull = len(self.stacks[from_stack_index]) - from_card_index
+            cards = self.pull_from_stack(from_stack_index, cards_to_pull)
+            self.stacks[to_stack_index] += cards
+
+        # Moving one card into the open slots (appended to the end)
+        elif action_to[0] == "open":
+            from_stack_index = action_from[0]
+            cards = self.pull_from_stack(from_stack_index, 1)
+            self.open_slots += cards
+
+        # Moving one card from the stacks or open slots into its suit stack
+        elif action_to[0] == "suit":
+            from_stack_index = action_from[0]
+            from_card_index = action_from[1]
+
+            # If pulling from open slots
+            if from_stack_index == -1:
+                card = self.pull_from_open_slot(from_card_index)
+                self.suit_stacks[card[0]] += 1
+
+            # If pulling from stack
+            else:
+                card = self.pull_from_stack(from_stack_index, 1)
+                self.suit_stacks[card[0]] += 1
+
+        # Discarding all 4 token cards of a given suit into a free open slot
+        elif action_to[0] == "token":
+            token_suit = action_to[1]
+
+            # Find all token cards with the given suit and remove them
+            for stack_index in range(STACK_COUNT):
+                stack_top = self.query_stack_top(stack_index)
+                if stack_top[0] == token_suit and stack_top[1] == 0:
+                    self.pull_from_stack(stack_index, 1)
+
+            self.open_slots = list(filter(lambda card: not (card[0] == token_suit and card[1] == 0), self.open_slots))
+
+            # Add the discarded pile into the open slots
+            self.open_slots.append((token_suit, -1))
 
     def can_move(self, stack_index, card_index):
         """
