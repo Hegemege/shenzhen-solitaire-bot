@@ -78,7 +78,7 @@ CARD_LOOKUP["black"] = [
 ]
 CARD_LOOKUP["rose"] = [(171, 142, 121, 193, 195, 179)]
 
-MAX_SOLUTION_LENGTH = 30
+MAX_SOLUTION_LENGTH = 40
 
 
 def main():
@@ -97,14 +97,13 @@ def intro_print():
     print("To exit, close the script between games")
 
 
-@profile
 def solve():
     """
         Solves the current game configuration
     """
     # image = ImageGrab.grab()
     # image = crop(image)
-    image = PIL.Image.open("reference_img.bmp")
+    image = PIL.Image.open("reference_img2.bmp")
 
     # Initialize the beginning game state
     state = GameState()
@@ -116,19 +115,29 @@ def solve():
     state.validate_state()
 
     # Setup lookups and other structures for the main solving loop
-    state_history = set()
+    state_history = {}
     search_stack = []
 
     # Initialize the search stack
     search_stack.append([state, []])
     shortest_solution = [0 for i in range(MAX_SOLUTION_LENGTH + 1)]
 
+    original_state = state.clone()
+    highest_heuristic = -999
+    highest_heuristic_state = None
+
     # Start the main solving loop
     states_searched = 0
     last_states_searched = 0
+    last_states_searched_print = 0
     while True:
-        if states_searched - last_states_searched > 1000:
-            last_states_searched = states_searched
+
+        if states_searched - last_states_searched_print > 10000:
+            print(highest_heuristic_state)
+            print()
+            print("Heuristic:", highest_heuristic)
+            print()
+            last_states_searched_print = states_searched
             print(len(search_stack), states_searched)
 
         if len(search_stack) == 0 and len(state_history) > 0:
@@ -158,16 +167,26 @@ def solve():
         for action in current_actions:
             clone = current_state.clone()
             clone.apply_action(action)
+            clone.auto_resolve()
 
+            # Hash the state, make sure we don't revisit a state
             clone_hash = hash(clone)
-
             if clone_hash in state_history:
-                continue
+                if state_history[clone_hash] == clone:
+                    continue
+            state_history[clone_hash] = clone
 
-            state_history.add(clone_hash)
+            heuristic_score = clone.get_heuristic_value()
 
-            search_stack.append((clone, current_history + [action]))
+            # Temp
+            if heuristic_score >= highest_heuristic:
+                highest_heuristic = heuristic_score
+                highest_heuristic_state = clone
+
+            search_stack.append((clone, current_history + [action], heuristic_score))
             states_searched += 1
+
+        search_stack.sort(key=lambda item: item[2])
 
     for action in shortest_solution:
         print(action)

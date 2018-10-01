@@ -3,6 +3,8 @@ INITIAL_STACK_SIZE = 5
 OPEN_SLOT_COUNT = 3
 SUIT_STACK_COUNT = 3
 
+STACK_RANGE = range(STACK_COUNT)
+
 # Each card is represented as a tuple
 # There are 3 main suits: red, green and black, and one rose card (rose, 0)
 # Number cards are represented as a 2-tuple, (color, value)
@@ -12,6 +14,8 @@ SUIT_STACK_COUNT = 3
 
 class GameState:
     def __init__(self):
+        self.actions_taken = 0
+
         # List of lists of tuples
         self.stacks = []
 
@@ -22,7 +26,7 @@ class GameState:
         self.suit_stacks = []
 
         # Initialize all stacks as empty
-        for i in range(STACK_COUNT):
+        for i in STACK_RANGE:
             self.stacks.append([])
 
         # Set all suit values to 0
@@ -30,13 +34,16 @@ class GameState:
         self.suit_stacks.append(["green", 0])
         self.suit_stacks.append(["black", 0])
 
+        self.suit_lookup = {"red": 0, "green": 1, "black": 2, "rose": None}
+        self.suit_reverse_lookup = {0: "red", 1: "green", 2: "black", None: "rose"}
+
     def clone(self):
         """
             Clones the given GameState object
         """
         clone = GameState()
 
-        for i in range(STACK_COUNT):
+        for i in STACK_RANGE:
             for j in range(len(self.stacks[i])):
                 # Copy each card from each stack
                 clone.stacks[i].append(self.stacks[i][j])
@@ -46,6 +53,8 @@ class GameState:
 
         for i in range(SUIT_STACK_COUNT):
             clone.suit_stacks[i][1] = self.suit_stacks[i][1]
+
+        clone.actions_taken = self.actions_taken
 
         return clone
 
@@ -61,7 +70,7 @@ class GameState:
             if self.suit_stacks[i][1] != 9:
                 return False
 
-        for i in range(STACK_COUNT):
+        for i in STACK_RANGE:
             if len(self.stacks[i]) != 0:
                 return False
 
@@ -85,23 +94,23 @@ class GameState:
             early_continue = False
 
             # Go through all top cards in stacks
-            for i in range(STACK_COUNT):
+            for i in STACK_RANGE:
                 top_card = self.query_stack_top(i)
                 if top_card is None:
                     continue
 
                 # If the card is the rose, remove it instantly
-                if self.suit_index(top_card) is None:
+                if top_card[0] == "rose":
                     self.pull_from_stack(i, 1)
                     continue
 
-                current_suit_value = self.suit_stacks[self.suit_index(top_card)][1]
+                current_suit_value = self.suit_stacks[self.suit_lookup[top_card[0]]][1]
 
                 # If card is (current + 1) and the value is (min + 1), remove it
                 # Also remove any 1's and 2's (only of can be pl    aced)
                 if top_card[1] == current_suit_value + 1 and (top_card[1] == minimum_suit_value + 1 or top_card[1] == 1 or top_card[1] == 2):
                     self.pull_from_stack(i, 1)
-                    self.suit_stacks[self.suit_index(top_card)][1] += 1
+                    self.suit_stacks[self.suit_lookup[top_card[0]]][1] += 1
                     early_continue = True
 
             # If a card was autoresolved from the stacks, do not try to autoresolve from the open slots at the same time
@@ -113,7 +122,7 @@ class GameState:
             # Also go through all open slot cards. Rose cannot be found here
             for i in range(len(self.open_slots)):
                 card = self.open_slots[i]
-                current_suit_value = self.suit_stacks[self.suit_index(card)][1]
+                current_suit_value = self.suit_stacks[self.suit_lookup[card[0]]][1]
 
                 if card[1] == current_suit_value + 1 and (card[1] == minimum_suit_value + 1 or card[1] == 1 or card[1] == 2):
                     open_slot_card = card
@@ -121,7 +130,7 @@ class GameState:
 
             if open_slot_card is not None:
                 self.open_slots.remove(open_slot_card)
-                self.suit_stacks[self.suit_index(card)][1] += 1
+                self.suit_stacks[self.suit_lookup[card[0]]][1] += 1
 
     def query_stack_top(self, index):
         """
@@ -179,11 +188,11 @@ class GameState:
         """
         suit_check = [[0, 0, 0] + [x for x in range(10)] for i in range(3)]
 
-        for stack_index in range(STACK_COUNT):
+        for stack_index in STACK_RANGE:
             stack = self.stacks[stack_index]
             for card_index in range(len(stack)):
                 card = stack[card_index]
-                suit_index = self.suit_index(card)
+                suit_index = self.suit_lookup[card[0]]
 
                 if suit_index is None:
                     continue
@@ -201,7 +210,7 @@ class GameState:
                 # Check for errors
                 if card_value == 0:
                     print("Parsing image into game state failed. Not all suit token cards were found. Suit: " +
-                          self.suit_name(suit_index))
+                          self.suit_reverse_lookup[suit_index])
                     exit(1)
 
                 # If the card in the given suit is not an expected value, some cards were not detected correctly
@@ -241,7 +250,7 @@ class GameState:
                 continue
 
             # Check if the card can be placed upon any other stack
-            for target_stack_index in range(STACK_COUNT):
+            for target_stack_index in STACK_RANGE:
                 if self.can_place(card, target_stack_index):
                     actions.append((
                         (-1, card_index), ("stack", target_stack_index)
@@ -250,7 +259,7 @@ class GameState:
             # There is no point moving a card from one open slot to another
 
             # Check if the card can be moved into suit stack
-            suit_index = self.suit_index(card)
+            suit_index = self.suit_lookup[card[0]]
             if suit_index is not None and card[1] == self.suit_stacks[suit_index][1] + 1:
                 actions.append((
                     (-1, card_index), ("suit", None)
@@ -260,20 +269,21 @@ class GameState:
         stack_actions = []
 
         # Loop through all stacks, and list out all legal actions
-        for stack_index in range(STACK_COUNT):
+        for stack_index in STACK_RANGE:
             stack = self.stacks[stack_index]
             for card_index in range(len(stack)):
                 card = stack[card_index]
-                can_move, stack_depth = self.can_move(stack_index, card_index)
+                can_move = self.can_move(stack_index, card_index)
+                stack_depth = len(stack) - card_index
                 if not can_move:
                     continue
 
                 # No actions for the rose card
-                if self.suit_index(card) is None:
+                if self.suit_lookup[card[0]] is None:
                     continue
 
                 # Check if the card can be placed upon any other stack
-                for target_stack_index in range(STACK_COUNT):
+                for target_stack_index in STACK_RANGE:
                     # Can not move onto the same stack
                     if stack_index == target_stack_index:
                         continue
@@ -290,7 +300,7 @@ class GameState:
                     ))
 
                 # Check if the card can be moved into suit stack. The card must be moved alone
-                suit_index = self.suit_index(card)
+                suit_index = self.suit_lookup[card[0]]
                 if card[1] == self.suit_stacks[suit_index][1] + 1 and stack_depth == 1:
                     actions.append((
                         (stack_index, card_index), ("suit", None)
@@ -306,10 +316,10 @@ class GameState:
         suit_token_in_open_slot = {"red": False, "green": False, "black": False}
 
         # Search from stacks...
-        for stack_index in range(STACK_COUNT):
+        for stack_index in STACK_RANGE:
             card = self.query_stack_top(stack_index)
             if card is not None:
-                suit_index = self.suit_index(card)
+                suit_index = self.suit_lookup[card[0]]
                 if suit_index is not None and card[1] == 0:
                     suit_token_count[card[0]] += 1
 
@@ -333,6 +343,8 @@ class GameState:
         """
             Applies the given action to this state. Assumes that the action is valid.
         """
+        self.actions_taken += 1
+
         action_from = action[0]
         action_to = action[1]
 
@@ -368,13 +380,13 @@ class GameState:
             # If pulling from open slots
             if from_stack_index == -1:
                 card = self.pull_from_open_slot(from_card_index)
-                suit_index = self.suit_index(card)
+                suit_index = self.suit_lookup[card[0]]
                 self.suit_stacks[suit_index][1] += 1
 
             # If pulling from stack
             else:
                 card = self.pull_from_stack(from_stack_index, 1)[0]
-                suit_index = self.suit_index(card)
+                suit_index = self.suit_lookup[card[0]]
                 self.suit_stacks[suit_index][1] += 1
 
         # Discarding all 4 token cards of a given suit into a free open slot
@@ -382,7 +394,7 @@ class GameState:
             token_suit = action_to[1]
 
             # Find all token cards with the given suit and remove them
-            for stack_index in range(STACK_COUNT):
+            for stack_index in STACK_RANGE:
                 stack_top = self.query_stack_top(stack_index)
                 if stack_top is not None and stack_top[0] == token_suit and stack_top[1] == 0:
                     self.pull_from_stack(stack_index, 1)
@@ -392,107 +404,106 @@ class GameState:
             # Add the discarded pile into the open slots
             self.open_slots.append((token_suit, -1))
 
+    def get_heuristic_value(self):
+        """
+            Returns a heuristic value for choosing a state over another
+        """
+        # Prioritize states that get rid of token cards fast
+        score = 0
+        for slot in self.open_slots:
+            if slot[1] == -1:
+                score += 3
+
+        # Prioritize states that get more cards onto the suit stacks
+        suit_min = 10
+        suit_max = 0
+        for suit_combo in self.suit_stacks:
+            if suit_combo[1] > suit_max:
+                suit_max = suit_combo[1]
+            if suit_combo[1] < suit_min:
+                suit_min = suit_combo[1]
+            score += suit_combo[1]
+
+        # Prioritize building long stacks
+        for stack_index in STACK_RANGE:
+            stack = self.stacks[stack_index]
+            if len(stack) == 0:
+                score += 3
+            if len(stack) > 0 and stack[0][1] >= 8:
+                score += len(stack)
+
+        # Deprioritize states with large difference in suit stacks
+        score -= (suit_max - suit_min)/2.0
+
+        # Deprioritize states using the open slots
+        score -= len(self.open_slots) * 1.5
+
+        # Deprioritise making a ton of actions
+        if self.actions_taken > 10:
+            score -= self.actions_taken / 5.0
+
+        return score
+
     def can_move(self, stack_index, card_index):
         """
-            Returns a 2-tuple with first value True if the card can be moved from the current stack
-            The second value is the depth of the stack defined by the card
-
-            This is one of the hottest function calls
+            Returns True if the card can be moved from the current stack
         """
-        stack = self.stacks[stack_index]
-        stack_size = len(stack)
-        card = stack[card_index]
+        card = self.stacks[stack_index][card_index]
         current_card = card
-        stack_depth = 1
         next_card_index = card_index + 1
 
-        # Some quick escapes
-        if stack_size == 1:
-            return [True, 1]
-
-        if stack_size - 1 == card_index:
-            return [True, 1]
-
-        while next_card_index < stack_size:
-            next_card = stack[next_card_index]
+        while next_card_index < len(self.stacks[stack_index]):
+            next_card = self.stacks[stack_index][next_card_index]
 
             if next_card[1] == 0 or current_card[1] == 0:
-                return (False, 0)
+                return False
 
             if (next_card[0] == current_card[0] or next_card[1] != current_card[1] - 1):
-                return (False, 0)
+                return False
 
             current_card = next_card
             next_card_index += 1
-            stack_depth += 1
 
-        return (True, stack_depth)
+        return True
 
     def can_place(self, card, stack_index):
         """
-            Returns true if the given card can be placed onto the given stack.
-
-            This is one of the hottest function calls
+            Returns true if the given card can be placed onto the given stack
         """
-        stack = self.stacks[stack_index]
-        stack_size = len(stack)
 
         # Can always place on empty stack
-        if stack_size == 0:
+        if len(self.stacks[stack_index]) == 0:
             return True
 
-        target_card = stack[-1]
+        target_card = self.stacks[stack_index][-1]
 
         # Cannot place onto suit token
-        # Cannot place suit token onto anything other than empty stack
-        if target_card[1] == 0 or card[1] == 0:
-            return False
-
+        # Cannot place token card onto non-empty stack
         # Target card must be different suit and +1 in value
-        if target_card[0] == card[0] or target_card[1] != card[1] + 1:
+        if target_card[1] == 0 or card[1] == 0 or target_card[0] == card[0] or target_card[1] != card[1] + 1:
             return False
 
         return True
 
-    def suit_index(self, card):
-        """
-            Get the index of the given suit. Returns None for the rose card
-        """
-        if card[0] == "red":
-            return 0
-        elif card[0] == "green":
-            return 1
-        elif card[0] == "black":
-            return 2
-        return None
-
-    def suit_name(self, index):
-        """
-            Convert a suit index to the suit name
-        """
-        if index == 0:
-            return "red"
-        elif index == 1:
-            return "green"
-        elif index == 2:
-            return "black"
-        return "rose"
-
     def __eq__(self, other):
-        for i in range(STACK_COUNT):
+        for i in STACK_RANGE:
             if self.stacks[i] != other.stacks[i]:
                 return False
 
-        for i in range(OPEN_SLOT_COUNT):
+        if len(self.open_slots) != len(other.open_slots):
+            return False
+
+        for i in range(len(self.open_slots)):
             if self.open_slots[i] != other.open_slots[i]:
                 return False
 
         return True
 
     def __hash__(self):
-        open_slots_hash = "".join([str(x) for x in self.open_slots])
-        stacks_hash = "".join(["".join([str(y) for y in x]) for x in self.stacks])
-        return hash(open_slots_hash + "-" + stacks_hash)
+        open_slots_hash = "-".join([str(x) for x in self.open_slots])
+        stacks_hash = "-".join(["".join([str(y) for y in x]) for x in self.stacks])
+        suit_hash = "-".join([str(x[1]) for x in self.suit_stacks])
+        return hash(open_slots_hash + "-" + stacks_hash + "-" + suit_hash)
 
     def __str__(self):
         return ("Open slots: " + ", ".join(map(lambda slot: str(slot[0]) + " " + str(slot[1]), self.open_slots)) + "\n" +
