@@ -242,6 +242,10 @@ class GameState:
                 if not can_move:
                     continue
 
+                # No actions for the rose card
+                if self.suit_index(card) is None:
+                    continue
+
                 # Check if the card can be placed upon any other stack
                 for target_stack_index in range(STACK_COUNT):
                     # Can not move onto the same stack
@@ -270,6 +274,9 @@ class GameState:
         for card_index in range(len(self.open_slots)):
             card = self.open_slots[card_index]
 
+            if card[1] == -1:
+                continue
+
             # Check if the card can be placed upon any other stack
             for target_stack_index in range(STACK_COUNT):
                 if self.can_place(card, target_stack_index):
@@ -281,7 +288,7 @@ class GameState:
 
             # Check if the card can be moved into suit stack
             suit_index = self.suit_index(card)
-            if (card[1] == self.suit_stacks[suit_index][1] + 1):
+            if suit_index is not None and card[1] == self.suit_stacks[suit_index][1] + 1:
                 actions.append((
                     (-1, card_index), ("suit", None)
                 ))
@@ -294,8 +301,10 @@ class GameState:
         # Search from stacks...
         for stack_index in range(STACK_COUNT):
             card = self.query_stack_top(stack_index)
-            if card[1] == 0:
-                suit_token_count[card[0]] += 1
+            if card is not None:
+                suit_index = self.suit_index(card)
+                if suit_index is not None and card[1] == 0:
+                    suit_token_count[card[0]] += 1
 
         # ... and open slots
         for card_index in range(len(self.open_slots)):
@@ -308,7 +317,7 @@ class GameState:
             count = suit_token_count[suit]
             if count == 4 and (suit_token_in_open_slot[suit] == True or len(self.open_slots) < OPEN_SLOT_COUNT):
                 actions.append((
-                    (None, None), ("token", self.suit_index(suit))
+                    (None, None), ("token", suit)
                 ))
 
         return actions
@@ -320,22 +329,29 @@ class GameState:
         action_from = action[0]
         action_to = action[1]
 
+        # Moving one card into the open slots (appended to the end)
+        if action_to[0] == "open":
+            from_stack_index = action_from[0]
+            cards = self.pull_from_stack(from_stack_index, 1)
+            self.open_slots += cards
+
         # Moving a card or stack onto another stack
-        if action_to[0] == "stack":
+        elif action_to[0] == "stack":
             from_stack_index = action_from[0]
             from_card_index = action_from[1]
 
             to_stack_index = action_to[1]
 
-            cards_to_pull = len(self.stacks[from_stack_index]) - from_card_index
-            cards = self.pull_from_stack(from_stack_index, cards_to_pull)
-            self.stacks[to_stack_index] += cards
+            # If pulling from open slots
+            if from_stack_index == -1:
+                card = self.pull_from_open_slot(from_card_index)
+                self.stacks[to_stack_index] += [card]
 
-        # Moving one card into the open slots (appended to the end)
-        elif action_to[0] == "open":
-            from_stack_index = action_from[0]
-            cards = self.pull_from_stack(from_stack_index, 1)
-            self.open_slots += cards
+            # If pulling from stack
+            else:
+                cards_to_pull = len(self.stacks[from_stack_index]) - from_card_index
+                cards = self.pull_from_stack(from_stack_index, cards_to_pull)
+                self.stacks[to_stack_index] += cards
 
         # Moving one card from the stacks or open slots into its suit stack
         elif action_to[0] == "suit":
@@ -345,12 +361,14 @@ class GameState:
             # If pulling from open slots
             if from_stack_index == -1:
                 card = self.pull_from_open_slot(from_card_index)
-                self.suit_stacks[card[0]] += 1
+                suit_index = self.suit_index(card)
+                self.suit_stacks[suit_index][1] += 1
 
             # If pulling from stack
             else:
-                card = self.pull_from_stack(from_stack_index, 1)
-                self.suit_stacks[card[0]] += 1
+                card = self.pull_from_stack(from_stack_index, 1)[0]
+                suit_index = self.suit_index(card)
+                self.suit_stacks[suit_index][1] += 1
 
         # Discarding all 4 token cards of a given suit into a free open slot
         elif action_to[0] == "token":
@@ -359,7 +377,7 @@ class GameState:
             # Find all token cards with the given suit and remove them
             for stack_index in range(STACK_COUNT):
                 stack_top = self.query_stack_top(stack_index)
-                if stack_top[0] == token_suit and stack_top[1] == 0:
+                if stack_top is not None and stack_top[0] == token_suit and stack_top[1] == 0:
                     self.pull_from_stack(stack_index, 1)
 
             self.open_slots = list(filter(lambda card: not (card[0] == token_suit and card[1] == 0), self.open_slots))
@@ -448,12 +466,12 @@ class GameState:
         return True
 
     def __hash__(self):
-        open_slots_hash = "".join(["".join(x) for x in self.open_slots])
+        open_slots_hash = "".join([str(x) for x in self.open_slots])
         stacks_hash = "".join(["".join([str(y) for y in x]) for x in self.stacks])
         return hash(open_slots_hash + "-" + stacks_hash)
 
     def __str__(self):
-        return ("Open slots: " + ", ".join(map(lambda slot: slot[0] + " " + str(slot[1]), self.open_slots)) + "\n" +
-                "Suit stacks: " + ", ".join(map(lambda slot: slot[0] + " " + str(slot[1]), self.suit_stacks)) + "\n" +
+        return ("Open slots: " + ", ".join(map(lambda slot: str(slot[0]) + " " + str(slot[1]), self.open_slots)) + "\n" +
+                "Suit stacks: " + ", ".join(map(lambda slot: str(slot[0]) + " " + str(slot[1]), self.suit_stacks)) + "\n" +
                 "Board:\n" +
-                "\n".join([", ".join(map(lambda slot: slot[0] + " " + str(slot[1]), stack)) for stack in self.stacks]))
+                "\n".join([", ".join(map(lambda slot: str(slot[0]) + " " + str(slot[1]), stack)) for stack in self.stacks]))

@@ -116,14 +116,61 @@ def solve():
     state_history = set()
     search_stack = []
 
-    actions = state.get_legal_actions()
-    for action in actions:
-        print(action)
+    current_state = state
+
+    # Initialize the search stack
+    search_stack.append([current_state, current_state.get_legal_actions(), []])
+    shortest_solution = []
 
     # Start the main solving loop
     while True:
-        pass
-        break
+        if len(search_stack) == 0 and len(state_history) > 0:
+            print("Unable to find solution")
+            break
+
+        if current_state.is_won():
+            print(len(search_stack[-1][2]))
+            input()
+            if len(search_stack[-1][2]) < len(shortest_solution):
+                shortest_solution = search_stack[-1][2]
+                print("New shortest solution")
+                print("Search stack size:", len(search_stack))
+            # break
+
+        # Pop last action of last state and apply it to a copy of the current state
+        # If there are no more actions of last state, pop the last state out
+
+        last_state = search_stack[-1]
+        if len(last_state[1]) == 0:
+            if len(search_stack) > 0:
+                search_stack.pop()
+            continue
+
+        current_state = last_state[0]
+
+        last_action = last_state[1].pop()
+
+        # Add old state to history
+        state_history.add(hash(current_state))
+
+        # Clone the state and apply the action to it
+        new_state = current_state.clone()
+        new_state.apply_action(last_action)
+        new_state.auto_resolve()
+
+        # If new state is not in history, make it current
+        if hash(new_state) not in state_history:
+            # print(current_state)
+            # print()
+            # print(last_action)
+            # input()
+            current_state = new_state
+
+            # Add all legal actions of the new current state to the stack
+            search_stack.append([current_state, current_state.get_legal_actions(), last_state[2] + [last_action]])
+
+    for action in shortest_solution:
+        print(action)
 
 
 def crop(image):
