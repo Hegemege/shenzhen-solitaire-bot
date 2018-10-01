@@ -78,6 +78,8 @@ CARD_LOOKUP["black"] = [
 ]
 CARD_LOOKUP["rose"] = [(171, 142, 121, 193, 195, 179)]
 
+MAX_SOLUTION_LENGTH = 30
+
 
 def main():
     intro_print()
@@ -95,12 +97,13 @@ def intro_print():
     print("To exit, close the script between games")
 
 
+@profile
 def solve():
     """
         Solves the current game configuration
     """
-    #image = ImageGrab.grab()
-    #image = crop(image)
+    # image = ImageGrab.grab()
+    # image = crop(image)
     image = PIL.Image.open("reference_img.bmp")
 
     # Initialize the beginning game state
@@ -116,58 +119,55 @@ def solve():
     state_history = set()
     search_stack = []
 
-    current_state = state
-
     # Initialize the search stack
-    search_stack.append([current_state, current_state.get_legal_actions(), []])
-    shortest_solution = []
+    search_stack.append([state, []])
+    shortest_solution = [0 for i in range(MAX_SOLUTION_LENGTH + 1)]
 
     # Start the main solving loop
+    states_searched = 0
+    last_states_searched = 0
     while True:
+        if states_searched - last_states_searched > 1000:
+            last_states_searched = states_searched
+            print(len(search_stack), states_searched)
+
         if len(search_stack) == 0 and len(state_history) > 0:
             print("Unable to find solution")
             break
 
-        if current_state.is_won():
-            print(len(search_stack[-1][2]))
-            input()
-            if len(search_stack[-1][2]) < len(shortest_solution):
-                shortest_solution = search_stack[-1][2]
-                print("New shortest solution")
-                print("Search stack size:", len(search_stack))
-            # break
+        # Take state from the end of stack
+        current_search_item = search_stack.pop()
+        current_state = current_search_item[0]
+        current_history = current_search_item[1]
 
-        # Pop last action of last state and apply it to a copy of the current state
-        # If there are no more actions of last state, pop the last state out
-
-        last_state = search_stack[-1]
-        if len(last_state[1]) == 0:
-            if len(search_stack) > 0:
-                search_stack.pop()
+        if len(current_history) > MAX_SOLUTION_LENGTH:
             continue
 
-        current_state = last_state[0]
+        # Check win condition
+        if current_state.is_won():
+            if len(current_history) < len(shortest_solution):
+                shortest_solution = current_history
+                print("New shortest solution", len(current_history))
+                print("States searched:", states_searched)
+                print("Stack size:", len(search_stack))
+                print()
+            # break
 
-        last_action = last_state[1].pop()
+        current_actions = current_state.get_legal_actions()
 
-        # Add old state to history
-        state_history.add(hash(current_state))
+        for action in current_actions:
+            clone = current_state.clone()
+            clone.apply_action(action)
 
-        # Clone the state and apply the action to it
-        new_state = current_state.clone()
-        new_state.apply_action(last_action)
-        new_state.auto_resolve()
+            clone_hash = hash(clone)
 
-        # If new state is not in history, make it current
-        if hash(new_state) not in state_history:
-            # print(current_state)
-            # print()
-            # print(last_action)
-            # input()
-            current_state = new_state
+            if clone_hash in state_history:
+                continue
 
-            # Add all legal actions of the new current state to the stack
-            search_stack.append([current_state, current_state.get_legal_actions(), last_state[2] + [last_action]])
+            state_history.add(clone_hash)
+
+            search_stack.append((clone, current_history + [action]))
+            states_searched += 1
 
     for action in shortest_solution:
         print(action)

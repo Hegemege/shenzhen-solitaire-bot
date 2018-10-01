@@ -233,43 +233,6 @@ class GameState:
         """
         actions = []
 
-        # Loop through all stacks, and list out all legal actions
-        for stack_index in range(STACK_COUNT):
-            stack = self.stacks[stack_index]
-            for card_index in range(len(stack)):
-                card = stack[card_index]
-                can_move, stack_depth = self.can_move(stack_index, card_index)
-                if not can_move:
-                    continue
-
-                # No actions for the rose card
-                if self.suit_index(card) is None:
-                    continue
-
-                # Check if the card can be placed upon any other stack
-                for target_stack_index in range(STACK_COUNT):
-                    # Can not move onto the same stack
-                    if stack_index == target_stack_index:
-                        continue
-
-                    if self.can_place(card, target_stack_index):
-                        actions.append((
-                            (stack_index, card_index), ("stack", target_stack_index)
-                        ))
-
-                # Check if the card can be placed into the open slots. The card must be moved alone
-                if len(self.open_slots) < OPEN_SLOT_COUNT and stack_depth == 1:
-                    actions.append((
-                        (stack_index, card_index), ("open", None)
-                    ))
-
-                # Check if the card can be moved into suit stack. The card must be moved alone
-                suit_index = self.suit_index(card)
-                if card[1] == self.suit_stacks[suit_index][1] + 1 and stack_depth == 1:
-                    actions.append((
-                        (stack_index, card_index), ("suit", None)
-                    ))
-
         # Loop through all open slots, add legal actions
         for card_index in range(len(self.open_slots)):
             card = self.open_slots[card_index]
@@ -292,6 +255,50 @@ class GameState:
                 actions.append((
                     (-1, card_index), ("suit", None)
                 ))
+
+        # Take stack actions separately and sort them by stack height
+        stack_actions = []
+
+        # Loop through all stacks, and list out all legal actions
+        for stack_index in range(STACK_COUNT):
+            stack = self.stacks[stack_index]
+            for card_index in range(len(stack)):
+                card = stack[card_index]
+                can_move, stack_depth = self.can_move(stack_index, card_index)
+                if not can_move:
+                    continue
+
+                # No actions for the rose card
+                if self.suit_index(card) is None:
+                    continue
+
+                # Check if the card can be placed upon any other stack
+                for target_stack_index in range(STACK_COUNT):
+                    # Can not move onto the same stack
+                    if stack_index == target_stack_index:
+                        continue
+
+                    if self.can_place(card, target_stack_index):
+                        stack_actions.append((
+                            stack_depth, (stack_index, card_index), ("stack", target_stack_index)
+                        ))
+
+                # Check if the card can be placed into the open slots. The card must be moved alone
+                if len(self.open_slots) < OPEN_SLOT_COUNT and stack_depth == 1:
+                    actions.append((
+                        (stack_index, card_index), ("open", None)
+                    ))
+
+                # Check if the card can be moved into suit stack. The card must be moved alone
+                suit_index = self.suit_index(card)
+                if card[1] == self.suit_stacks[suit_index][1] + 1 and stack_depth == 1:
+                    actions.append((
+                        (stack_index, card_index), ("suit", None)
+                    ))
+
+        stack_actions.sort(key=lambda action: action[0])
+        for action in stack_actions:
+            actions.append((action[1], action[2]))
 
         # Check if 4 of the same token card are visible for the discarding action
         # Also check if a given suit card is already in the open slots
@@ -320,7 +327,7 @@ class GameState:
                     (None, None), ("token", suit)
                 ))
 
-        return actions
+        return actions[::-1]
 
     def apply_action(self, action):
         """
@@ -388,14 +395,26 @@ class GameState:
     def can_move(self, stack_index, card_index):
         """
             Returns a 2-tuple with first value True if the card can be moved from the current stack
-            The second value is the depth of the stack underneath the card
+            The second value is the depth of the stack defined by the card
+
+            This is one of the hottest function calls
         """
-        card = self.stacks[stack_index][card_index]
+        stack = self.stacks[stack_index]
+        stack_size = len(stack)
+        card = stack[card_index]
         current_card = card
         stack_depth = 1
         next_card_index = card_index + 1
-        while next_card_index < len(self.stacks[stack_index]):
-            next_card = self.stacks[stack_index][next_card_index]
+
+        # Some quick escapes
+        if stack_size == 1:
+            return [True, 1]
+
+        if stack_size - 1 == card_index:
+            return [True, 1]
+
+        while next_card_index < stack_size:
+            next_card = stack[next_card_index]
 
             if next_card[1] == 0 or current_card[1] == 0:
                 return (False, 0)
@@ -411,13 +430,18 @@ class GameState:
 
     def can_place(self, card, stack_index):
         """
-            Returns true if the given card can be placed onto the given stack
+            Returns true if the given card can be placed onto the given stack.
+
+            This is one of the hottest function calls
         """
+        stack = self.stacks[stack_index]
+        stack_size = len(stack)
+
         # Can always place on empty stack
-        if len(self.stacks[stack_index]) == 0:
+        if stack_size == 0:
             return True
 
-        target_card = self.stacks[stack_index][-1]
+        target_card = stack[-1]
 
         # Cannot place onto suit token
         # Cannot place suit token onto anything other than empty stack
