@@ -436,11 +436,18 @@ class GameState:
         score -= (suit_max - suit_min)/2.0
 
         # Deprioritize states using the open slots
-        score -= len(self.open_slots) * 1.5
+        score -= len(self.open_slots) * 3.2
 
         # Deprioritise making a ton of actions
         if self.actions_taken > 10:
             score -= self.actions_taken / 5.0
+
+        # If there are few cards left, prioritize making everything flat
+        if self.get_total_card_count() < 10:
+            score = len(list(filter(lambda x: len(x) > 0, self.stacks))) + 100
+
+        if self.is_won():
+            return 1000
 
         return score
 
@@ -501,7 +508,7 @@ class GameState:
 
     def __hash__(self):
         open_slots_hash = "-".join([str(x) for x in self.open_slots])
-        stacks_hash = "-".join(["".join([str(y) for y in x]) for x in self.stacks])
+        stacks_hash = "-".join(["".join([str(y) for y in x]) for x in self.stacks if len(x) > 0])
         suit_hash = "-".join([str(x[1]) for x in self.suit_stacks])
         return hash(open_slots_hash + "-" + stacks_hash + "-" + suit_hash)
 

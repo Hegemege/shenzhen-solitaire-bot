@@ -78,7 +78,7 @@ CARD_LOOKUP["black"] = [
 ]
 CARD_LOOKUP["rose"] = [(171, 142, 121, 193, 195, 179)]
 
-MAX_SOLUTION_LENGTH = 40
+MAX_SOLUTION_LENGTH = 32
 
 
 def main():
@@ -120,23 +120,20 @@ def solve():
 
     # Initialize the search stack
     search_stack.append([state, []])
-    shortest_solution = [0 for i in range(MAX_SOLUTION_LENGTH + 1)]
+    shortest_solution = [0 for i in range(10000)]
 
     original_state = state.clone()
     highest_heuristic = -999
-    highest_heuristic_state = None
 
     # Start the main solving loop
     states_searched = 0
-    last_states_searched = 0
     last_states_searched_print = 0
+
     while True:
 
         if states_searched - last_states_searched_print > 10000:
-            print(highest_heuristic_state)
-            print()
+            # print(highest_heuristic_state)
             print("Heuristic:", highest_heuristic)
-            print()
             last_states_searched_print = states_searched
             print(len(search_stack), states_searched)
 
@@ -149,10 +146,9 @@ def solve():
         current_state = current_search_item[0]
         current_history = current_search_item[1]
 
-        if len(current_history) > MAX_SOLUTION_LENGTH:
+        if len(current_history) > MAX_SOLUTION_LENGTH and current_search_item[2] < 100:
             continue
 
-        # Check win condition
         if current_state.is_won():
             if len(current_history) < len(shortest_solution):
                 shortest_solution = current_history
@@ -160,7 +156,7 @@ def solve():
                 print("States searched:", states_searched)
                 print("Stack size:", len(search_stack))
                 print()
-            # break
+            break
 
         current_actions = current_state.get_legal_actions()
 
@@ -181,13 +177,13 @@ def solve():
             # Temp
             if heuristic_score >= highest_heuristic:
                 highest_heuristic = heuristic_score
-                highest_heuristic_state = clone
 
             search_stack.append((clone, current_history + [action], heuristic_score))
             states_searched += 1
 
         search_stack.sort(key=lambda item: item[2])
 
+    print(original_state)
     for action in shortest_solution:
         print(action)
 
