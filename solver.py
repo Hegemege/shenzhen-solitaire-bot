@@ -111,6 +111,23 @@ CARD_LOOKUP["black"] = [
 ]
 CARD_LOOKUP["rose"] = [(171, 142, 121, 193, 195, 179)]
 
+SUIT_STACKS_LOOKUP = {}
+SUIT_STACKS_LOOKUP["red"] = [
+    (190, 160, 143, 182, 110, 89),
+    (187, 136, 117, 175, 56, 33),
+    (187, 135, 116, 179, 87, 65)
+]
+SUIT_STACKS_LOOKUP["green"] = [
+    (152, 175, 155, 95, 147, 120),
+    (123, 161, 138, 32, 117, 83),
+    (121, 160, 137, 68, 134, 104)
+]
+SUIT_STACKS_LOOKUP["black"] = [
+    (152, 153, 141, 85, 85, 78),
+    (120, 121, 111, 16, 16, 14),
+    (118, 119, 110, 55, 55, 51)
+]
+
 MAX_SOLUTION_LENGTH = 35
 
 REPLAY_WAIT_BETWEEN_ACTIONS = 0.15
@@ -141,7 +158,7 @@ def solve():
     image = ImageGrab.grab()
     image = crop(image)
 
-    #image = PIL.Image.open("reference_img2.bmp")
+    #image = PIL.Image.open("reference_img4.bmp")
 
     # Initialize the beginning game state
     state = GameState()
@@ -438,10 +455,10 @@ def populate_state(image, state):
 
         found = False
 
-        for suit in CARD_LOOKUP:
+        for suit in SUIT_STACKS_LOOKUP:
             if found:
                 break
-            suit_cards = CARD_LOOKUP[suit]
+            suit_cards = SUIT_STACKS_LOOKUP[suit]
             for card_index in range(len(suit_cards)):
                 comparison_color = suit_cards[card_index]
 
@@ -454,6 +471,7 @@ def populate_state(image, state):
 
                 # Test if the colors are close to each other. Store the card position
                 if color_distance(sampled_avg_color, comparison_avg_color) < COLOR_MATCH_THRESHOLD and color_distance(sampled_check_color, comparison_check_color) < COLOR_MATCH_THRESHOLD:
+                    print("Autoresolved suit order:", suit)
                     state.suit_insert_order.append(suit)
                     found = True
                     break
