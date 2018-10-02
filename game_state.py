@@ -36,6 +36,8 @@ class GameState:
         self.suit_stacks.append(["green", 0])
         self.suit_stacks.append(["black", 0])
 
+        self.suit_insert_order = []
+
         self.suit_lookup = {"red": 0, "green": 1, "black": 2, "rose": None}
         self.suit_reverse_lookup = {0: "red", 1: "green", 2: "black", None: "rose"}
 
@@ -55,6 +57,9 @@ class GameState:
 
         for i in range(SUIT_STACK_COUNT):
             clone.suit_stacks[i][1] = self.suit_stacks[i][1]
+
+        for order in self.suit_insert_order:
+            clone.suit_insert_order.append(order)
 
         clone.actions_taken = self.actions_taken
 
@@ -111,8 +116,11 @@ class GameState:
                 current_suit_value = self.suit_stacks[self.suit_lookup[top_card[0]]][1]
 
                 # If card is (current + 1) and the value is (min + 1), remove it
-                # Also remove any 1's and 2's (only of can be pl    aced)
+                # Also remove any 1's and 2's (only of can be placed)
                 if top_card[1] == current_suit_value + 1 and (top_card[1] == minimum_suit_value + 1 or top_card[1] == 1 or top_card[1] == 2):
+                    if (top_card[1] == 1):
+                        self.suit_insert_order.append(top_card[0])
+
                     self.pull_from_stack(i, 1)
                     resolved_count += 1
                     self.suit_stacks[self.suit_lookup[top_card[0]]][1] += 1

@@ -41,6 +41,9 @@ BOARD_VERTICAL_DELIMITER = 31
 CARD_VALUE_OFFSET = (12, 10)
 CARD_VALUE_SIZE = (12, 21)
 
+SUIT_STACK_LEFT = 853
+SUIT_STACK_TOP = 19
+
 COLOR_MATCH_THRESHOLD = 2
 
 # Autoplay parmeters
@@ -57,10 +60,14 @@ CLICK_OPEN_SLOTS = [
 ]
 
 CLICK_SUIT_STACKS = {
-    "red": (862, 30),
-    "green": (1015, 30),
-    "black": (1168, 30)
+
 }
+
+CLICK_SUIT_STACK_POSITIONS = [
+    (862, 30),
+    (1015, 30),
+    (1168, 30)
+]
 
 CLICK_STACKS = [[(0, 0) for j in range(MAX_STACK_SIZE)] for i in range(STACK_COUNT)]
 
@@ -108,7 +115,7 @@ MAX_SOLUTION_LENGTH = 35
 
 REPLAY_WAIT_BETWEEN_ACTIONS = 0.15
 REPLAY_MOUSE_MOVE_TIME = 0.15
-REPLAY_AUTORESOLVE_WAIT_PER_ACTION = 0.35
+REPLAY_AUTORESOLVE_WAIT_PER_ACTION = 0.30
 
 
 def main():
@@ -152,6 +159,7 @@ def solve():
     # Initialize the search stack
     search_stack.append((state, [], 0))
     shortest_solution = [0 for i in range(10000)]
+    shortest_solution_suit_order = []
 
     original_state = state.clone()
     highest_heuristic = -999
@@ -212,6 +220,7 @@ def solve():
             if heuristic_score >= highest_heuristic:
                 highest_heuristic = heuristic_score
                 shortest_solution = current_history + [action]
+                shortest_solution_suit_order = clone.suit_insert_order
 
             new_history = list(current_history)
             new_history += [action]
@@ -233,6 +242,12 @@ def solve():
     # print(original_state)
     # for action in shortest_solution:
     #    print(action)
+
+    # Resolve the suit stack order
+    cloned_suit_stack_positions = list(CLICK_SUIT_STACK_POSITIONS)
+    for i in range(len(shortest_solution_suit_order)):
+        suit = shortest_solution_suit_order[i]
+        CLICK_SUIT_STACKS[suit] = cloned_suit_stack_positions.pop(0)
 
     replay_actions(shortest_solution)
 
@@ -402,6 +417,46 @@ def populate_state(image, state):
     for position in sorted(position_lookup.keys()):
         stack_index = position[0]
         state.parse_card_into_stack(stack_index, position_lookup[position])
+
+    # Check already resolved colors from suit stacks
+    for i in range(3):
+        left = SUIT_STACK_LEFT + i * BOARD_HORIZONTAL_DELIMITER + CARD_VALUE_OFFSET[0]
+        top = SUIT_STACK_TOP + CARD_VALUE_OFFSET[1]
+
+        right = left + CARD_VALUE_SIZE[0]
+        bottom = top + CARD_VALUE_SIZE[1]
+        card_value = image.crop((left, top, right, bottom))
+
+        # Get avg from top left corner
+        top_left_avg = sample_avg_color(card_value, (2, 2))
+
+        # Get overall color average
+        pixels = list(card_value.getdata())
+        avg_color = avg_color_list(pixels)
+
+        comb_color = avg_color + top_left_avg
+
+        found = False
+
+        for suit in CARD_LOOKUP:
+            if found:
+                break
+            suit_cards = CARD_LOOKUP[suit]
+            for card_index in range(len(suit_cards)):
+                comparison_color = suit_cards[card_index]
+
+                # Split the 6-tuples into 3-tuples
+                sampled_avg_color = comb_color[:3]
+                sampled_check_color = comb_color[3:]
+
+                comparison_avg_color = comparison_color[:3]
+                comparison_check_color = comparison_color[3:]
+
+                # Test if the colors are close to each other. Store the card position
+                if color_distance(sampled_avg_color, comparison_avg_color) < COLOR_MATCH_THRESHOLD and color_distance(sampled_check_color, comparison_check_color) < COLOR_MATCH_THRESHOLD:
+                    state.suit_insert_order.append(suit)
+                    found = True
+                    break
 
 
 def sample_avg_color(image, position):
