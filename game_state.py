@@ -1,9 +1,11 @@
 STACK_COUNT = 8
 INITIAL_STACK_SIZE = 5
+MAX_STACK_SIZE = 12
 OPEN_SLOT_COUNT = 3
 SUIT_STACK_COUNT = 3
 
 STACK_RANGE = range(STACK_COUNT)
+OPEN_RANGE = range(OPEN_SLOT_COUNT)
 
 # Each card is represented as a tuple
 # There are 3 main suits: red, green and black, and one rose card (rose, 0)
@@ -20,7 +22,7 @@ class GameState:
         self.stacks = []
 
         # List of tuples
-        self.open_slots = []
+        self.open_slots = [None for i in OPEN_RANGE]
 
         # List of lists (2-tuples really) indicating current value per suit
         self.suit_stacks = []
@@ -48,8 +50,8 @@ class GameState:
                 # Copy each card from each stack
                 clone.stacks[i].append(self.stacks[i][j])
 
-        for i in range(len(self.open_slots)):
-            clone.open_slots.append(self.open_slots[i])
+        for i in OPEN_RANGE:
+            clone.open_slots[i] = self.open_slots[i]
 
         for i in range(SUIT_STACK_COUNT):
             clone.suit_stacks[i][1] = self.suit_stacks[i][1]
@@ -62,8 +64,8 @@ class GameState:
         """
             Determine if the current state is the won end state
         """
-        for i in range(len(self.open_slots)):
-            if self.open_slots[i][1] != -1:
+        for i in OPEN_RANGE:
+            if self.open_slots[i] is not None and self.open_slots[i][1] != -1:
                 return False
 
         for i in range(SUIT_STACK_COUNT):
@@ -83,6 +85,7 @@ class GameState:
             Example: suit stacks 000, can move any 1's and 2's
             Example: suit stacks 412, can move middle color (-> 422) but not others (-> 512 or 413)
         """
+        resolved_count = 0
         previous_count = 0
         while previous_count != self.get_total_card_count():
             previous_count = self.get_total_card_count()
@@ -102,6 +105,7 @@ class GameState:
                 # If the card is the rose, remove it instantly
                 if top_card[0] == "rose":
                     self.pull_from_stack(i, 1)
+                    resolved_count += 1
                     continue
 
                 current_suit_value = self.suit_stacks[self.suit_lookup[top_card[0]]][1]
@@ -110,6 +114,7 @@ class GameState:
                 # Also remove any 1's and 2's (only of can be pl    aced)
                 if top_card[1] == current_suit_value + 1 and (top_card[1] == minimum_suit_value + 1 or top_card[1] == 1 or top_card[1] == 2):
                     self.pull_from_stack(i, 1)
+                    resolved_count += 1
                     self.suit_stacks[self.suit_lookup[top_card[0]]][1] += 1
                     early_continue = True
 
@@ -117,20 +122,26 @@ class GameState:
             if early_continue:
                 continue
 
-            open_slot_card = None
+            open_slot_index = None
 
             # Also go through all open slot cards. Rose cannot be found here
-            for i in range(len(self.open_slots)):
+            for i in OPEN_RANGE:
                 card = self.open_slots[i]
+                if card is None:
+                    continue
                 current_suit_value = self.suit_stacks[self.suit_lookup[card[0]]][1]
 
                 if card[1] == current_suit_value + 1 and (card[1] == minimum_suit_value + 1 or card[1] == 1 or card[1] == 2):
-                    open_slot_card = card
+                    open_slot_index = i
                     break
 
-            if open_slot_card is not None:
-                self.open_slots.remove(open_slot_card)
+            if open_slot_index is not None:
+                card = self.open_slots[open_slot_index]
+                self.open_slots[open_slot_index] = None
+                resolved_count += 1
                 self.suit_stacks[self.suit_lookup[card[0]]][1] += 1
+
+        return resolved_count
 
     def query_stack_top(self, index):
         """
@@ -166,13 +177,7 @@ class GameState:
             Removes the card at the given index from the open slot
         """
         card = self.open_slots[index]
-
-        slots = self.open_slots
-        start = slots[:index]
-        end = slots[index + 1:]
-
-        self.open_slots = start + end
-
+        self.open_slots[index] = None
         return card
 
     def parse_card_into_stack(self, index, card):
@@ -243,8 +248,11 @@ class GameState:
         actions = []
 
         # Loop through all open slots, add legal actions
-        for card_index in range(len(self.open_slots)):
+        for card_index in OPEN_RANGE:
             card = self.open_slots[card_index]
+
+            if card is None:
+                continue
 
             if card[1] == -1:
                 continue
@@ -262,7 +270,7 @@ class GameState:
             suit_index = self.suit_lookup[card[0]]
             if suit_index is not None and card[1] == self.suit_stacks[suit_index][1] + 1:
                 actions.append((
-                    (-1, card_index), ("suit", None)
+                    (-1, card_index), ("suit", card[0])
                 ))
 
         # Take stack actions separately and sort them by stack height
@@ -293,17 +301,18 @@ class GameState:
                             stack_depth, (stack_index, card_index), ("stack", target_stack_index)
                         ))
 
+                open_indices = list(filter(lambda x: self.open_slots[x] is None, OPEN_RANGE))
                 # Check if the card can be placed into the open slots. The card must be moved alone
-                if len(self.open_slots) < OPEN_SLOT_COUNT and stack_depth == 1:
+                if len(open_indices) > 0 and stack_depth == 1:
                     actions.append((
-                        (stack_index, card_index), ("open", None)
+                        (stack_index, card_index), ("open", open_indices[0])
                     ))
 
                 # Check if the card can be moved into suit stack. The card must be moved alone
                 suit_index = self.suit_lookup[card[0]]
                 if card[1] == self.suit_stacks[suit_index][1] + 1 and stack_depth == 1:
                     actions.append((
-                        (stack_index, card_index), ("suit", None)
+                        (stack_index, card_index), ("suit", card[0])
                     ))
 
         stack_actions.sort(key=lambda action: action[0])
@@ -324,15 +333,19 @@ class GameState:
                     suit_token_count[card[0]] += 1
 
         # ... and open slots
-        for card_index in range(len(self.open_slots)):
+        for card_index in OPEN_RANGE:
             card = self.open_slots[card_index]
+            if card is None:
+                continue
+
             if card[1] == 0:
                 suit_token_count[card[0]] += 1
                 suit_token_in_open_slot[card[0]] = True
 
         for suit in suit_token_count:
             count = suit_token_count[suit]
-            if count == 4 and (suit_token_in_open_slot[suit] == True or len(self.open_slots) < OPEN_SLOT_COUNT):
+            open_indices = list(filter(lambda x: self.open_slots[x] is None, OPEN_RANGE))
+            if count == 4 and (suit_token_in_open_slot[suit] == True or len(open_indices) > 0):
                 actions.append((
                     (None, None), ("token", suit)
                 ))
@@ -348,11 +361,12 @@ class GameState:
         action_from = action[0]
         action_to = action[1]
 
-        # Moving one card into the open slots (appended to the end)
+        # Moving one card into the open slots
         if action_to[0] == "open":
             from_stack_index = action_from[0]
+            to_index = action_to[1]
             cards = self.pull_from_stack(from_stack_index, 1)
-            self.open_slots += cards
+            self.open_slots[to_index] = cards[0]
 
         # Moving a card or stack onto another stack
         elif action_to[0] == "stack":
@@ -399,10 +413,12 @@ class GameState:
                 if stack_top is not None and stack_top[0] == token_suit and stack_top[1] == 0:
                     self.pull_from_stack(stack_index, 1)
 
-            self.open_slots = list(filter(lambda card: not (card[0] == token_suit and card[1] == 0), self.open_slots))
+            self.open_slots = list(
+                map(lambda card: None if card is None or (card[0] == token_suit and card[1] == 0) else card, self.open_slots))
 
-            # Add the discarded pile into the open slots
-            self.open_slots.append((token_suit, -1))
+            # Add the discarded pile into the first free open spot
+            open_indices = list(filter(lambda x: self.open_slots[x] is None, OPEN_RANGE))
+            self.open_slots[open_indices[0]] = (token_suit, -1)
 
     def get_heuristic_value(self):
         """
@@ -411,8 +427,10 @@ class GameState:
         # Prioritize states that get rid of token cards fast
         score = 0
         for slot in self.open_slots:
-            if slot[1] == -1:
-                score += 3
+            if slot is not None:
+                score -= 3.2
+                if slot[1] == -1:
+                    score += 8
 
         # Prioritize states that get more cards onto the suit stacks
         suit_min = 10
@@ -436,7 +454,7 @@ class GameState:
         score -= (suit_max - suit_min)/2.0
 
         # Deprioritize states using the open slots
-        score -= len(self.open_slots) * 3.2
+        #score -= len(self.open_slots) * 3.2
 
         # Deprioritise making a ton of actions
         if self.actions_taken > 10:
@@ -448,6 +466,10 @@ class GameState:
 
         if self.is_won():
             return 1000
+
+        # If not many actions are taken, put high priority
+        if self.actions_taken < 5:
+            return max(5, score)
 
         return score
 
@@ -497,10 +519,7 @@ class GameState:
             if self.stacks[i] != other.stacks[i]:
                 return False
 
-        if len(self.open_slots) != len(other.open_slots):
-            return False
-
-        for i in range(len(self.open_slots)):
+        for i in OPEN_RANGE:
             if self.open_slots[i] != other.open_slots[i]:
                 return False
 
@@ -513,7 +532,7 @@ class GameState:
         return hash(open_slots_hash + "-" + stacks_hash + "-" + suit_hash)
 
     def __str__(self):
-        return ("Open slots: " + ", ".join(map(lambda slot: str(slot[0]) + " " + str(slot[1]), self.open_slots)) + "\n" +
+        return ("Open slots: " + ", ".join(map(lambda slot: str(slot[0]) + " " + str(slot[1]) if slot is not None else str(None), self.open_slots)) + "\n" +
                 "Suit stacks: " + ", ".join(map(lambda slot: str(slot[0]) + " " + str(slot[1]), self.suit_stacks)) + "\n" +
                 "Board:\n" +
                 "\n".join([", ".join(map(lambda slot: str(slot[0]) + " " + str(slot[1]), stack)) for stack in self.stacks]))

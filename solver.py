@@ -3,14 +3,19 @@ import pyscreenshot as ImageGrab
 import time
 import functools
 import math
+from pynput.mouse import Button, Controller
 
-from game_state import GameState, STACK_COUNT, OPEN_SLOT_COUNT, SUIT_STACK_COUNT, INITIAL_STACK_SIZE
+from game_state import GameState, STACK_COUNT, OPEN_SLOT_COUNT, SUIT_STACK_COUNT, INITIAL_STACK_SIZE, MAX_STACK_SIZE
 
 # Constants used to crop the game view from the whole screen
 # Works properly if game is in native resolution
 
 GAME_WIDTH = 1300
 GAME_HEIGHT = 870
+
+# Will be calculated by code
+GAME_LEFT = 1000
+GAME_TOP = 500
 
 # Colors
 
@@ -37,6 +42,27 @@ CARD_VALUE_OFFSET = (12, 10)
 CARD_VALUE_SIZE = (12, 21)
 
 COLOR_MATCH_THRESHOLD = 2
+
+# Autoplay parmeters
+CLICK_TOKEN_DISCARD_BUTTONS = {
+    "red": (578, 55),
+    "green": (578, 140),
+    "black": (578, 225)
+}
+
+CLICK_OPEN_SLOTS = [
+    (100, 30),
+    (256, 30),
+    (410, 30)
+]
+
+CLICK_SUIT_STACKS = {
+    "red": (862, 30),
+    "green": (1015, 30),
+    "black": (1168, 30)
+}
+
+CLICK_STACKS = [[(0, 0) for j in range(MAX_STACK_SIZE)] for i in range(STACK_COUNT)]
 
 # Color average lookup
 CARD_LOOKUP = {}
@@ -78,7 +104,11 @@ CARD_LOOKUP["black"] = [
 ]
 CARD_LOOKUP["rose"] = [(171, 142, 121, 193, 195, 179)]
 
-MAX_SOLUTION_LENGTH = 32
+MAX_SOLUTION_LENGTH = 35
+
+REPLAY_WAIT_BETWEEN_ACTIONS = 0.15
+REPLAY_MOUSE_MOVE_TIME = 0.15
+REPLAY_AUTORESOLVE_WAIT_PER_ACTION = 0.35
 
 
 def main():
@@ -101,9 +131,10 @@ def solve():
     """
         Solves the current game configuration
     """
-    # image = ImageGrab.grab()
-    # image = crop(image)
-    image = PIL.Image.open("reference_img2.bmp")
+    image = ImageGrab.grab()
+    image = crop(image)
+
+    #image = PIL.Image.open("reference_img2.bmp")
 
     # Initialize the beginning game state
     state = GameState()
@@ -119,7 +150,7 @@ def solve():
     search_stack = []
 
     # Initialize the search stack
-    search_stack.append([state, []])
+    search_stack.append((state, [], 0))
     shortest_solution = [0 for i in range(10000)]
 
     original_state = state.clone()
@@ -128,14 +159,18 @@ def solve():
     # Start the main solving loop
     states_searched = 0
     last_states_searched_print = 0
+    last_states_searched_sort = 0
 
     while True:
-
+        if states_searched > 50000:
+            break
         if states_searched - last_states_searched_print > 10000:
-            # print(highest_heuristic_state)
             print("Heuristic:", highest_heuristic)
             last_states_searched_print = states_searched
             print(len(search_stack), states_searched)
+
+        if states_searched - last_states_searched_sort > 100:
+            search_stack.sort(key=lambda item: item[2])
 
         if len(search_stack) == 0 and len(state_history) > 0:
             print("Unable to find solution")
@@ -149,7 +184,7 @@ def solve():
         if len(current_history) > MAX_SOLUTION_LENGTH and current_search_item[2] < 100:
             continue
 
-        if current_state.is_won():
+        if current_search_item[2] >= 100:  # current_state.is_won() or :
             if len(current_history) < len(shortest_solution):
                 shortest_solution = current_history
                 print("New shortest solution", len(current_history))
@@ -163,7 +198,7 @@ def solve():
         for action in current_actions:
             clone = current_state.clone()
             clone.apply_action(action)
-            clone.auto_resolve()
+            resolved_count = clone.auto_resolve()
 
             # Hash the state, make sure we don't revisit a state
             clone_hash = hash(clone)
@@ -174,18 +209,106 @@ def solve():
 
             heuristic_score = clone.get_heuristic_value()
 
-            # Temp
             if heuristic_score >= highest_heuristic:
                 highest_heuristic = heuristic_score
+                shortest_solution = current_history + [action]
 
-            search_stack.append((clone, current_history + [action], heuristic_score))
+            new_history = list(current_history)
+            new_history += [action]
+            if resolved_count > 0:
+                new_history += [((None, None), ("resolve", resolved_count))]
+
+            search_stack.append((clone, new_history, heuristic_score))
             states_searched += 1
 
-        search_stack.sort(key=lambda item: item[2])
+        # Sort the last 100 entries
+        #split_off = int(len(search_stack)/2)
+        #search_stack_start = search_stack[:-split_off]
+        #search_stack_end = search_stack[-split_off:]
+        #search_stack_end.sort(key=lambda item: item[2])
+        #search_stack = search_stack_start + search_stack_end
 
-    print(original_state)
-    for action in shortest_solution:
+        #search_stack.sort(key=lambda item: item[2])
+
+    # print(original_state)
+    # for action in shortest_solution:
+    #    print(action)
+
+    replay_actions(shortest_solution)
+
+
+def replay_actions(actions):
+    """
+        Plays the solved actions on the board
+    """
+    mouse = Controller()
+
+    print("Replaying", len(actions), "actions")
+    time.sleep(1)
+
+    for action in actions:
         print(action)
+        if action[0][0] is None:
+            # Discard suit tokens
+            if action[1][0] == "token":
+                suit = action[1][1]
+                drag_from_to(mouse, CLICK_TOKEN_DISCARD_BUTTONS[suit], CLICK_TOKEN_DISCARD_BUTTONS[suit])
+            # Auto-resolve
+            else:
+                time.sleep(0.5 + REPLAY_AUTORESOLVE_WAIT_PER_ACTION * action[1][1])
+        else:
+            if action[0][0] == -1:
+
+                # Move from open slot to stack
+                if action[1][0] == "stack":
+                    from_position = CLICK_OPEN_SLOTS[action[0][1]]
+                    to_position = CLICK_STACKS[action[1][1]][5]
+                    drag_from_to(mouse, from_position, to_position)
+
+                # Move from open slot to suit stack
+                else:
+                    from_position = CLICK_OPEN_SLOTS[action[0][1]]
+                    to_position = CLICK_SUIT_STACKS[action[1][1]]
+                    drag_from_to(mouse, from_position, to_position)
+            else:
+                # Stack to stack
+                if action[1][0] == "stack":
+                    from_position = CLICK_STACKS[action[0][0]][action[0][1]]
+                    # Always drag onto the 6th card, which will cover all vertical positions
+                    to_position = CLICK_STACKS[action[1][1]][5]
+                    drag_from_to(mouse, from_position, to_position)
+
+                # Stack to suit stack
+                elif action[1][0] == "suit":
+                    from_position = CLICK_STACKS[action[0][0]][action[0][1]]
+                    to_position = CLICK_SUIT_STACKS[action[1][1]]
+                    drag_from_to(mouse, from_position, to_position)
+
+                # Stack to open slot
+                else:
+                    from_position = CLICK_STACKS[action[0][0]][action[0][1]]
+                    to_position = CLICK_OPEN_SLOTS[action[1][1]]
+                    drag_from_to(mouse, from_position, to_position)
+
+
+def click_on(mouse, position__):
+    position = game_to_screen(position__)
+    mouse.position = position
+    time.sleep(REPLAY_MOUSE_MOVE_TIME)
+    mouse.click(Button.left, 1)
+    time.sleep(REPLAY_MOUSE_MOVE_TIME)
+
+
+def drag_from_to(mouse, from_position__, to_position__):
+    from_position = game_to_screen(from_position__)
+    to_position = game_to_screen(to_position__)
+    mouse.position = from_position
+    mouse.press(Button.left)
+    time.sleep(REPLAY_MOUSE_MOVE_TIME)
+    mouse.position = to_position
+    time.sleep(REPLAY_MOUSE_MOVE_TIME)
+    mouse.release(Button.left)
+    time.sleep(REPLAY_MOUSE_MOVE_TIME)
 
 
 def crop(image):
@@ -195,15 +318,18 @@ def crop(image):
         Assume the game is in native resolution
         Confirmed to work in 1080p and 1440p
     """
+    global GAME_LEFT
+    global GAME_TOP
+
     width = image.size[0]
     height = image.size[1]
     game_width = GAME_WIDTH
     game_height = GAME_HEIGHT
 
-    game_left = (width - game_width)/2.0
-    game_top = (height - game_height)/2.0
+    GAME_LEFT = (width - game_width)/2.0
+    GAME_TOP = (height - game_height)/2.0
 
-    return image.crop((game_left, game_top, width - game_left, height - game_top))
+    return image.crop((GAME_LEFT, GAME_TOP, width - GAME_LEFT, height - GAME_TOP))
 
 
 def populate_state(image, state):
@@ -215,9 +341,15 @@ def populate_state(image, state):
 
     # Loop through the board and extract color data from card values
     for i in range(STACK_COUNT):
-        for j in range(INITIAL_STACK_SIZE):
+        for j in range(MAX_STACK_SIZE):
             left = BOARD_TOP_LEFT[0] + i * BOARD_HORIZONTAL_DELIMITER + CARD_VALUE_OFFSET[0]
             top = BOARD_TOP_LEFT[1] + j * BOARD_VERTICAL_DELIMITER + CARD_VALUE_OFFSET[1]
+
+            CLICK_STACKS[i][j] = (left, top)
+
+            if j >= INITIAL_STACK_SIZE:
+                continue
+
             right = left + CARD_VALUE_SIZE[0]
             bottom = top + CARD_VALUE_SIZE[1]
             card_value = image.crop((left, top, right, bottom))
@@ -299,6 +431,13 @@ def color_distance(from_color, to_color):
         Calculate the euclidean distance of two colors in 3D space
     """
     return math.sqrt((from_color[0] - to_color[0]) ** 2 + (from_color[1] - to_color[1]) ** 2 + (from_color[2] - to_color[2]) ** 2)
+
+
+def game_to_screen(position):
+    """
+        Converts coordinates from game view into screen coordinates for mouse interaction
+    """
+    return (GAME_LEFT + position[0], GAME_TOP + position[1])
 
 
 if __name__ == "__main__":
