@@ -128,11 +128,11 @@ SUIT_STACKS_LOOKUP["black"] = [
     (118, 119, 110, 55, 55, 51)
 ]
 
-MAX_SOLUTION_LENGTH = 35
+MAX_SOLUTION_LENGTH = 45
 
-REPLAY_WAIT_BETWEEN_ACTIONS = 0.15
-REPLAY_MOUSE_MOVE_TIME = 0.15
-REPLAY_AUTORESOLVE_WAIT_PER_ACTION = 0.30
+REPLAY_WAIT_BETWEEN_ACTIONS = 0.06
+REPLAY_MOUSE_MOVE_TIME = 0.06
+REPLAY_AUTORESOLVE_WAIT_PER_ACTION = 0.25
 
 
 def main():
@@ -187,7 +187,7 @@ def solve():
     last_states_searched_sort = 0
 
     while True:
-        if states_searched > 50000:
+        if states_searched > 50000 and highest_heuristic * 2000 < states_searched:
             break
         if states_searched - last_states_searched_print > 10000:
             print("Heuristic:", highest_heuristic)
@@ -206,7 +206,7 @@ def solve():
         current_state = current_search_item[0]
         current_history = current_search_item[1]
 
-        if len(current_history) > MAX_SOLUTION_LENGTH and current_search_item[2] < 100:
+        if len(current_history) > MAX_SOLUTION_LENGTH and current_search_item[2] < 30:
             continue
 
         if current_search_item[2] >= 100:  # current_state.is_won() or :
@@ -276,7 +276,11 @@ def replay_actions(actions):
     mouse = Controller()
 
     print("Replaying", len(actions), "actions")
-    time.sleep(1)
+    time.sleep(0.5)
+
+    # Click on the area once to make sure the first click doesn't get captured by window focus
+    drag_from_to(mouse, CLICK_OPEN_SLOTS[0], CLICK_OPEN_SLOTS[1])
+    time.sleep(0.5)
 
     for action in actions:
         print(action)
@@ -285,9 +289,10 @@ def replay_actions(actions):
             if action[1][0] == "token":
                 suit = action[1][1]
                 drag_from_to(mouse, CLICK_TOKEN_DISCARD_BUTTONS[suit], CLICK_TOKEN_DISCARD_BUTTONS[suit])
+                time.sleep(0.2 + REPLAY_AUTORESOLVE_WAIT_PER_ACTION)
             # Auto-resolve
             else:
-                time.sleep(0.5 + REPLAY_AUTORESOLVE_WAIT_PER_ACTION * action[1][1])
+                time.sleep(0.2 + REPLAY_AUTORESOLVE_WAIT_PER_ACTION * action[1][1])
         else:
             if action[0][0] == -1:
 
@@ -335,6 +340,7 @@ def drag_from_to(mouse, from_position__, to_position__):
     from_position = game_to_screen(from_position__)
     to_position = game_to_screen(to_position__)
     mouse.position = from_position
+    time.sleep(REPLAY_MOUSE_MOVE_TIME)
     mouse.press(Button.left)
     time.sleep(REPLAY_MOUSE_MOVE_TIME)
     mouse.position = to_position
